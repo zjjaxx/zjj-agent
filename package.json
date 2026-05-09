@@ -1,0 +1,59 @@
+{
+  "name": "zjj-agent",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "zjj agent",
+  "author": "zjjaxx",
+  "bin": {
+    "zjj-agent": "./dist/index.mjs"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/author/library#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/author/library.git"
+  },
+  "bugs": {
+    "url": "https://github.com/author/library/issues"
+  },
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "start": "node dist/index.mjs",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/cli-progress": "^3.11.6",
+    "@types/figlet": "^1.7.0",
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "bumpp": "^11.0.1",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.45",
+    "@langchain/deepseek": "^1.0.25",
+    "@langchain/openai": "^1.4.5",
+    "@napi-rs/canvas": "^1.0.0",
+    "cli-progress": "^3.12.0",
+    "dotenv": "^17.4.2",
+    "execa": "^9.6.1",
+    "gradient-string": "^3.0.0",
+    "langchain": "^1.4.0",
+    "ora": "^9.4.0",
+    "picocolors": "^1.1.1",
+    "zod": "^4.4.3"
+  }
+}
