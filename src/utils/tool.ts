@@ -22,7 +22,7 @@ export const execaTool = tool(
   },
   {
     name: "execa",
-    description: "执行一个命令并返回输出",
+    description: "执行脚本命令并返回输出",
     schema: z.object({
       command: z.string().describe("要执行的命令"),
     }),
@@ -59,18 +59,18 @@ export const writeFileTool = tool(
       await mkdir(dir, { recursive: true });
       await writeFile(filePath, content, "utf-8");
       infoLog(
-        `  [工具调用] write_file("${filePath}") - 成功写入 ${content.length} 字节`,
+        `  [工具调用] writeFile("${filePath}") - 成功写入 ${content.length} 字节`,
       );
       return `文件写入成功: ${filePath}`;
     } catch (error) {
       errorLog(
-        `  [工具调用] write_file("${filePath}") - 错误: ${error instanceof Error ? error.message : String(error)}`,
+        `  [工具调用] writeFile("${filePath}") - 错误: ${error instanceof Error ? error.message : String(error)}`,
       );
       return `写入文件失败: ${error instanceof Error ? error.message : String(error)}`;
     }
   },
   {
-    name: "write_file",
+    name: "writeFile",
     description: "向指定路径写入文件内容，自动创建目录",
     schema: z.object({
       filePath: z.string().describe("文件路径"),
