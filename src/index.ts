@@ -17,7 +17,8 @@ import {
   safelyInvokeModel,
   type ModelWithTools,
 } from "./utils/invoke";
-import { tools as mcpTools,mcpClient,mcpResourceContent} from "./mcp/test-client";
+
+import { getTools,getMcpResourceContent,generateMcpClient} from "./mcp/test-client";
 
 async function main() {
   gradientBanner("欢迎使用 ZJJ AGENT!");
@@ -31,8 +32,11 @@ async function main() {
   }
   infoLog(`DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}`);
 
-
-  const tools = [execaTool, readFileTool, writeFileTool, listDirectoryTool, ...mcpTools];
+  const mcpClient = generateMcpClient();
+  const mcpTools = await getTools();
+  const mcpResourceContent = await getMcpResourceContent();
+  const tools = [execaTool,  ...(mcpTools)];
+  infoLog(`已加载工具:\n ${tools.map((tool) => tool.name).join("\n")}`);
   const llm = new ChatDeepSeekWithReasoning({
     model: "deepseek-v4-pro",
     temperature: 0,
@@ -85,8 +89,9 @@ ${mcpResourceContent}`),
 // 之后在 项目中：
 // 1. 使用 pnpm install 安装依赖
 // `),
-new HumanMessage(`查询用户信息，用户ID为001,查询MCP Server 的使用指南`),
-  ];
+// new HumanMessage(`查询用户信息，用户ID为001,查询MCP Server 的使用指南,当前在杭州市余杭区欧美经融城，搜索离我最近的商场，查看当前目录`),
+// new HumanMessage(`杭州市余杭区欧美金融城附近的5个酒店，以及去的路线，路线规划生成文档保存到/Users/zhengjiajun/Desktop/路线规划.md 文件`),
+];
   await runAgentLoop(modelWithTools, messages);
   await mcpClient.close();
 }
