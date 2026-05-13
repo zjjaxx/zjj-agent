@@ -71,8 +71,9 @@ async function main() {
   // const question2 = '如何使用cheerio加载网页？';
   // const webDocs = await generateDocs();
   // const ragPrompt2 = await rag.executeRag(question2,webDocs);
+  await rag.connnectMilvus();
   await rag.executeMilvus();
-  const milvusQuery = "我想看看关于做饭的日记";
+  const milvusQuery = "天龙八部的段誉喜欢乔峰吗";
   const milvusQueryVector = await rag.embeddings.embedQuery(milvusQuery);
   const milvusPrompt = await rag.generatePrompt(milvusQueryVector,milvusQuery);
   const messages: BaseMessage[] = [

@@ -2,16 +2,27 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { Document } from "@langchain/core/documents";
 import { withSpinner } from "../utils/progress";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
-import { infoLog, successLog } from "../utils/color";
+import { infoLog, successLog, errorLog } from "../utils/color";
 import {
   MilvusClient,
   DataType,
   MetricType,
   IndexType,
 } from "@zilliz/milvus2-sdk-node";
-
-const COLLECTION_NAME = "ai_diary";
+import {
+  COLLECTION_NAME,
+  loadAndProcessEPubStreaming,
+  BOOK_NAME,
+} from "./novel";
 const VECTOR_DIM = 1024;
+type MilvusQueryRow = {
+  id?: string | number;
+};
+
+type MilvusQueryResult = {
+  data?: MilvusQueryRow[];
+  results?: MilvusQueryRow[];
+};
 
 export class RAG {
   public embeddings: OpenAIEmbeddings;
@@ -59,133 +70,136 @@ ${context}`;
     await this.client.connectPromise;
     successLog("🚀连接Milvus成功");
   }
+  private async chunkIdExists(id: string) {
+    const queryResult = (await this.client.query({
+      collection_name: COLLECTION_NAME,
+      expr: `id == ${JSON.stringify(id)}`,
+      output_fields: ["id"],
+    })) as MilvusQueryResult;
+    const rows = queryResult.data ?? queryResult.results ?? [];
+    return rows.length > 0;
+  }
   async executeMilvus() {
-    infoLog("创建集合中...");
-    await this.client.createCollection({
+    // 检查集合是否存在
+    const hasCollection = await this.client.hasCollection({
       collection_name: COLLECTION_NAME,
-      fields: [
-        {
-          name: "id",
-          data_type: DataType.VarChar,
-          max_length: 50,
-          is_primary_key: true,
-        },
-        { name: "vector", data_type: DataType.FloatVector, dim: VECTOR_DIM },
-        { name: "content", data_type: DataType.VarChar, max_length: 5000 },
-        { name: "date", data_type: DataType.VarChar, max_length: 50 },
-        { name: "mood", data_type: DataType.VarChar, max_length: 50 },
-        {
-          name: "tags",
-          data_type: DataType.Array,
-          element_type: DataType.VarChar,
-          max_capacity: 10,
-          max_length: 50,
-        },
-      ],
     });
-    successLog("集合创建成功");
-
-    infoLog("创建索引中...");
-    await this.client.createIndex({
-      collection_name: COLLECTION_NAME,
-      field_name: "vector",
-      index_type: IndexType.IVF_FLAT,
-      metric_type: MetricType.COSINE,
-      params: { nlist: 1024 },
-    });
-    successLog("索引创建成功");
+    if (!hasCollection.value) {
+      infoLog("创建集合中...");
+      await this.client.createCollection({
+        collection_name: COLLECTION_NAME,
+        fields: [
+          {
+            name: "id",
+            data_type: DataType.VarChar,
+            max_length: 100,
+            is_primary_key: true,
+          },
+          { name: "book_id", data_type: DataType.VarChar, max_length: 100 },
+          { name: "book_name", data_type: DataType.VarChar, max_length: 200 },
+          { name: "chapter_num", data_type: DataType.Int32 },
+          { name: "index", data_type: DataType.Int32 },
+          { name: "content", data_type: DataType.VarChar, max_length: 10000 },
+          { name: "vector", data_type: DataType.FloatVector, dim: VECTOR_DIM },
+        ],
+      });
+      successLog("集合创建成功");
+      infoLog("创建索引中...");
+      await this.client.createIndex({
+        collection_name: COLLECTION_NAME,
+        field_name: "vector",
+        index_type: IndexType.IVF_FLAT,
+        metric_type: MetricType.COSINE,
+        params: { nlist: 1024 },
+      });
+      successLog("索引创建成功");
+    }
 
     infoLog("加载集合中...");
     await this.client.loadCollection({ collection_name: COLLECTION_NAME });
     successLog("集合加载成功");
+    const bookId = 1;
+    await loadAndProcessEPubStreaming(
+      bookId,
+      async (chunks: string[], bookId: number, chapterNum: number) => {
+        try {
+          if (chunks.length === 0) {
+            return 0;
+          } // 为每个文档块生成向量并构建插入数据
 
-    infoLog("插入日记数据中...");
-    const diaryContents = [
-      {
-        id: "diary_001",
-        content:
-          "今天天气很好，去公园散步了，心情愉快。看到了很多花开了，春天真美好。",
-        date: "2026-01-10",
-        mood: "happy",
-        tags: ["生活", "散步"],
+          const insertData = [];
+          for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+            const chunk = chunks[chunkIndex];
+            const id = `${bookId}_${chapterNum}_${chunkIndex}`;
+            if (await this.chunkIdExists(id)) {
+              infoLog(`片段 ${id} 已存在`);
+              continue;
+            }
+            const vector = await this.embeddings.embedQuery(chunk);
+            insertData.push({
+              id,
+              book_id: bookId,
+              book_name: BOOK_NAME,
+              chapter_num: chapterNum,
+              index: chunkIndex,
+              content: chunk,
+              vector,
+            });
+          }
+          if (insertData.length > 0) {
+            const insertResult = await this.client.insert({
+              collection_name: COLLECTION_NAME,
+              data: insertData,
+            });
+            if(Number(insertResult.insert_cnt) !== insertData.length) {
+              errorLog(`插入章节 ${chapterNum} 的数据时出错:${insertResult.insert_cnt} !== ${insertData.length}`);
+              throw new Error(`插入章节 ${chapterNum} 的数据时出错:${insertResult.insert_cnt} !== ${insertData.length}`);
+            }
+            return Number(insertResult.insert_cnt) || 0;
+          }
+          return 0;
+        } catch (error) {
+          errorLog(
+            `插入章节 ${chapterNum} 的数据时出错:${error instanceof Error ? error.message : String(error)}`,
+          );
+          throw error;
+        }
       },
-      {
-        id: "diary_003",
-        content:
-          "周末和朋友去爬山，天气很好，心情也很放松。享受大自然的感觉真好。",
-        date: "2026-01-12",
-        mood: "relaxed",
-        tags: ["户外", "朋友"],
-      },
-      {
-        id: "diary_004",
-        content:
-          "今天学习了 Milvus 向量数据库，感觉很有意思。向量搜索技术真的很强大。",
-        date: "2026-01-12",
-        mood: "curious",
-        tags: ["学习", "技术"],
-      },
-      {
-        id: "diary_005",
-        content:
-          "晚上做了一顿丰盛的晚餐，尝试了新菜谱。家人都说很好吃，很有成就感。",
-        date: "2026-01-13",
-        mood: "proud",
-        tags: ["美食", "家庭"],
-      },
-    ];
-    infoLog("嵌入模型生成向量中...");
-    const diaryData = await Promise.all(
-      diaryContents.map(async (diary) => ({
-        ...diary,
-        vector: await this.embeddings.embedQuery(diary.content),
-      })),
     );
-
-    const insertResult = await this.client.insert({
-      collection_name: COLLECTION_NAME,
-      data: diaryData,
-    });
-    successLog(`插入 ${insertResult.insert_cnt} 条记录成功`);
   }
   async generatePrompt(milvusQueryVector: number[], question: string) {
     const searchResult = await this.client.search({
       collection_name: COLLECTION_NAME,
       vector: milvusQueryVector,
-      limit: 2,
+      limit: 3,
       metric_type: MetricType.COSINE,
-      output_fields: ["id", "content", "date", "mood", "tags"],
+      output_fields: ["id", "book_id", "chapter_num", "index", "content"],
     });
-    infoLog(`Found ${searchResult.results.length} results:\n`);
+
+    infoLog(`Found ${searchResult.results.length} results:\n`);
     searchResult.results.forEach((item, index) => {
-      infoLog(`${index + 1}. [Score: ${item.score.toFixed(4)}]`);
-      infoLog(`   ID: ${item.id}`);
-      infoLog(`   Date: ${item.date}`);
-      infoLog(`   Mood: ${item.mood}`);
-      infoLog(`   Tags: ${item.tags?.join(", ")}`);
-      infoLog(`   Content: ${item.content}\n`);
-    }); // 3. 构建上下文
+      infoLog(`${index + 1}. [Score: ${item.score.toFixed(4)}]`);
+      infoLog(`   ID: ${item.id}`);
+      infoLog(`   Book ID: ${item.book_id}`);
+      infoLog(`   Chapter: 第 ${item.chapter_num} 章`);
+      infoLog(`   Index: ${item.index}`);
+      infoLog(`   Content: ${item.content}\n`);
+    });
+
     const context = searchResult.results
-      .map((diary, i) => {
-        return `[日记 ${i + 1}]
-    日期: ${diary.date}
-    心情: ${diary.mood}
-    标签: ${diary.tags?.join(", ")}
-    内容: ${diary.content}`;
+      .map((item, i) => {
+        return `[片段 ${i + 1}]
+      章节: 第 ${item.chapter_num} 章
+      内容: ${item.content}`;
       })
       .join("\n\n━━━━━\n\n");
     const prompt = `
-请根据以下日记内容回答问题：
+请根据以下内容回答问题：
 ${context}
 
 用户问题: ${question}
 
-回答要求：
-1. 如果日记中有相关信息，请结合日记内容给出详细、温暖的回答
-2. 可以总结多篇日记的内容，找出共同点或趋势
-3. 如果日记中没有相关信息，请温和地告知用户
-4. 用第一人称"你"来称呼日记的作者
-5. 回答要有同理心，让用户感到被理解和关心`;
+`;
     return prompt;
   }
 }

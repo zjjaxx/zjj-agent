@@ -1,6 +1,9 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
+  copy: [
+    { from: 'src/public', to: 'dist' },
+  ],
   dts: {
     tsgo: true,
   },
