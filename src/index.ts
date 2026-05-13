@@ -22,6 +22,7 @@ import {
   generateMcpClient,
 } from "./mcp/test-client";
 import { ChatDeepSeek } from "@langchain/deepseek";
+import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
 
 async function main() {
   gradientBanner("欢迎使用 ZJJ AGENT!");
@@ -40,11 +41,10 @@ async function main() {
   const mcpResourceContent = await getMcpResourceContent();
   const tools = [execaTool, ...mcpTools];
   infoLog(`已加载工具:\n ${tools.map((tool) => tool.name).join("\n")}`);
-  const llm = new ChatDeepSeek({
+  const llm = new ChatDeepSeekWithReasoning({
     model: "deepseek-v4-pro",
     temperature: 0.8,
     apiKey: DEEPSEEK_API_KEY,
-    modelKwargs:{"thinking": {"type": "enabled"}}
   });
   const modelWithTools = llm.bindTools(tools);
 
