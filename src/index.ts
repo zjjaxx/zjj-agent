@@ -21,8 +21,9 @@ import {
   getMcpResourceContent,
   generateMcpClient,
 } from "./mcp/test-client";
-import { ChatDeepSeek } from "@langchain/deepseek";
 import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
+import { executeTruncationMemory } from "./memory/truncation-memory";
+import { summarizationMemoryDemo } from "./memory/summarization-memory";
 
 async function main() {
   gradientBanner("欢迎使用 ZJJ AGENT!");
@@ -52,6 +53,9 @@ async function main() {
     modelWithTools: ModelWithTools,
     messages: BaseMessage[],
   ) {
+    await executeTruncationMemory();
+    await summarizationMemoryDemo(modelWithTools);
+    return;
     let aiMsg = await safelyInvokeModel(modelWithTools, messages);
     successLog(`AI: ${aiMsg.content}`);
     messages.push(aiMsg);

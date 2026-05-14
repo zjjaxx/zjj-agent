@@ -53,6 +53,9 @@ importers:
       html-to-text:
         specifier: ^10.0.0
         version: 10.0.0
+      js-tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
       langchain:
         specifier: ^1.4.0
         version: 1.4.0(@langchain/core@1.1.45(@opentelemetry/api@1.9.1)(openai@6.37.0(ws@5.2.4)(zod@4.4.3))(ws@5.2.4))(@opentelemetry/api@1.9.1)(openai@6.37.0(ws@5.2.4)(zod@4.4.3))(ws@5.2.4)(zod-to-json-schema@3.25.2(zod@4.4.3))
