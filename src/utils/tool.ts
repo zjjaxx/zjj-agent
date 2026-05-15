@@ -104,7 +104,7 @@ export const listDirectoryTool = tool(
 );
 
 // 使用 zod 定义复杂的输出结构
-const personSchema = z.object({
+export const personSchema = z.object({
   name: z.string().describe("人的全名"),
   birth_year: z.number().describe("出生年份"),
   death_year: z.number().optional().describe("去世年份，如果还在世则不填"),
@@ -129,6 +129,7 @@ const personSchema = z.object({
     .describe("教育背景"),
   biography: z.string().describe("简短传记，100字以内"),
 });
+export type PersonInfo = z.infer<typeof personSchema>
 export const personTool = {
   name: "extract_scientist_info",
   description: "提取和结构化人物的详细信息",

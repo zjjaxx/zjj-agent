@@ -5,20 +5,15 @@ import { mkdirSync } from "fs";
 import { errorLog, infoLog, gradientBanner, successLog } from "./utils/color";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
-import { execaTool, personTool } from "./utils/tool";
-import type { StructuredToolInterface } from "@langchain/core/tools";
+import { execaTool, personTool, type PersonInfo } from "./utils/tool";
 import {
   invokeToolCalls,
   safelyInvokeModel,
-  type ChatOpenAIBindToolsParams,
   type ModelWithTools,
 } from "./utils/invoke";
 import { RAG } from "./rag/index";
 import { getTools, generateMcpClient } from "./mcp/test-client";
 import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
-
-/** `bindTools` 的工具联合类型上并非都有 `name`，此处按项目里的 LangChain 工具断言 */
-type BindToolName = Pick<StructuredToolInterface, "name">;
 
 async function main() {
   gradientBanner("欢迎使用 ZJJ AGENT!");
@@ -36,8 +31,8 @@ async function main() {
   const mcpTools = await getTools();
   const ignoreToolMap = new Map<string, boolean>([[personTool.name, true]]);
   const tools = [execaTool, personTool, ...mcpTools];
-  infoLog(
-    `已加载工具:\n ${tools.map((tool) => (tool as BindToolName).name).join("\n")}`,
+  successLog(
+    `已加载工具:\n ${tools.map((tool) => tool.name).join("\n")}`,
   );
   const llm = new ChatDeepSeekWithReasoning({
     model: "deepseek-v4-pro",
@@ -116,7 +111,8 @@ async function main() {
     new HumanMessage(milvusQuery),
   ];
   const aiMsg = await runAgentLoop(modelWithTools, messages);
-  infoLog(`result is:`, aiMsg?.tool_calls?.[0]?.args);
+  const result = aiMsg.tool_calls?.[0]?.args as PersonInfo;
+  infoLog(`result is:`,'\n','name:', result.name,'\n','birth_year:', result.birth_year,'\n','death_year:', result.death_year,'\n','nationality:', result.nationality,'\n','awards:', result.awards,'\n','major_achievements:', result.major_achievements,'\n','education:', result.education,'\n','biography:', result.biography);
   await mcpClient.close();
 }
 main();
