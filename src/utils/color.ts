@@ -1,5 +1,18 @@
+import { inspect } from 'node:util'
 import picocolors from 'picocolors'
 import gradient from 'gradient-string'
+
+function formatLogMessage(message: unknown): string {
+  if (typeof message === 'string') {
+    return message
+  }
+  return inspect(message, {
+    depth: 8,
+    maxArrayLength: 50,
+    breakLength: 80,
+    compact: false,
+  })
+}
 
 export const errorLog = (message: string) => {
   console.error(picocolors.red(`[ERROR] ${message}`))
@@ -9,8 +22,9 @@ export const warnLog = (message: string) => {
   console.warn(picocolors.yellow(`[WARN] ${message}`))
 }
 
-export const infoLog = (message: string) => {
-  console.info(picocolors.blue(`[INFO] ${message}`))
+export const infoLog = (...messages: unknown[]) => {
+  const text = messages.map(formatLogMessage).join(" ");
+  console.info(picocolors.blue(`[INFO] ${text}`))
 }
 export const successLog = (message: string) => {
   console.info(picocolors.green(`[SUCCESS] ${message}`))

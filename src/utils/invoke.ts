@@ -1,4 +1,5 @@
 import {
+  AIMessage,
   AIMessageChunk,
   ToolMessage,
   type BaseMessage,
@@ -11,9 +12,20 @@ import type { StructuredToolInterface } from "@langchain/core/tools";
 
 import { withSpinner } from "./progress";
 import { errorLog, infoLog } from "./color";
+import type {
+  BaseChatOpenAI,
+  BaseChatOpenAICallOptions,
+} from "@langchain/openai";
+
+/** `BaseChatOpenAI.bindTools` 的参数元组：`[tools, kwargs?]` */
+export type ChatOpenAIBindToolsParams = Parameters<
+  BaseChatOpenAI<BaseChatOpenAICallOptions>["bindTools"]
+>[0];
+
+/** 本项目中实际可调用的工具子集（`bindTools` 允许更宽的类型联合） */
+type InvokableTool = Pick<StructuredToolInterface, "name" | "invoke">;
 
 const MODEL_REQUEST_TIMEOUT_MS = 120_000;
-type ToolLike = Pick<StructuredToolInterface, "name" | "invoke">;
 class ModelRequestTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`模型请求超过 ${Math.round(timeoutMs / 1000)} 秒仍未返回`);
@@ -56,20 +68,49 @@ export async function invokeModel(
 export async function safelyInvokeModel(
   modelWithTools: ModelWithTools,
   messages: BaseMessage[],
+  stream: boolean = false,
 ) {
   try {
-    return await invokeModel(modelWithTools, messages);
+    if (stream) {
+      return await streamInvokeModel(modelWithTools, messages);
+    } else {
+      return await invokeModel(modelWithTools, messages);
+    }
   } catch (error) {
     if (error instanceof ModelRequestTimeoutError) {
       errorLog(`${error.message}，已中断本次请求，请稍后重试`);
     } else {
-      errorLog(`模型请求失败: ${error instanceof Error ? error.message : String(error)}`);
+      errorLog(
+        `模型请求失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     process.exit(1);
   }
 }
-
-async function invokeToolCall(toolCall: ToolCall, toolsByName: Map<string, ToolLike>): Promise<ToolMessage> {
+export async function streamInvokeModel(
+  modelWithTools: ModelWithTools,
+  messages: BaseMessage[],
+): Promise<AIMessage> {
+  return await withSpinner("🚀请求模型中...", async (spinner) => {
+    const stream = await modelWithTools.stream(messages);
+    spinner.stop();
+    let acc: AIMessageChunk | undefined;
+    for await (const chunk of stream) {
+      acc = acc ? acc.concat(chunk) : chunk;
+      if (chunk.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
+        process.stdout.write(chunk.tool_call_chunks[0].args as string);
+      }
+    }
+    if (!acc) {
+      return new AIMessage("");
+    }
+    return acc;
+  });
+}
+async function invokeToolCall(
+  toolCall: ToolCall,
+  toolsByName: Map<string, InvokableTool>,
+): Promise<ToolMessage> {
   infoLog(
     `🚀执行工具: ${toolCall.name},参数: ${JSON.stringify(toolCall.args)}`,
   );
@@ -82,7 +123,7 @@ async function invokeToolCall(toolCall: ToolCall, toolsByName: Map<string, ToolL
   }
 
   try {
-    return await tool.invoke(toolCall) as ToolMessage;
+    return (await tool.invoke(toolCall)) as ToolMessage;
   } catch (error) {
     const msg = `执行工具: ${toolCall.name},参数: ${JSON.stringify(toolCall.args)}失败: ${error instanceof Error ? error.message : String(error)}`;
     errorLog(msg);
@@ -90,12 +131,21 @@ async function invokeToolCall(toolCall: ToolCall, toolsByName: Map<string, ToolL
   }
 }
 
-export async function invokeToolCalls(toolCalls: ToolCall[], tools: ToolLike[]) {
-  const toolsByName = new Map(tools.map((t) => [t.name, t]));
+export async function invokeToolCalls(
+  toolCalls: ToolCall[],
+  tools: ChatOpenAIBindToolsParams,
+) {
+  const toolsByName = new Map<string, InvokableTool>();
+  for (const t of tools) {
+    const tool = t as InvokableTool;
+    toolsByName.set(tool.name, tool);
+  }
 
   return await withSpinner("🚀执行工具中...", () =>
     Promise.all(
-      toolCalls.map(async (toolCall) => await invokeToolCall(toolCall, toolsByName)),
+      toolCalls.map(
+        async (toolCall) => await invokeToolCall(toolCall, toolsByName),
+      ),
     ),
   );
 }

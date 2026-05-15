@@ -102,3 +102,35 @@ export const listDirectoryTool = tool(
     }),
   },
 );
+
+// 使用 zod 定义复杂的输出结构
+const personSchema = z.object({
+  name: z.string().describe("人的全名"),
+  birth_year: z.number().describe("出生年份"),
+  death_year: z.number().optional().describe("去世年份，如果还在世则不填"),
+  nationality: z.string().describe("国籍"),
+  awards: z
+    .array(
+      z.object({
+        name: z.string().describe("奖项名称"),
+        year: z.number().describe("获奖年份"),
+        reason: z.string().optional().describe("获奖原因"),
+      }),
+    )
+    .describe("获得的重要奖项列表"),
+  major_achievements: z.array(z.string()).describe("主要成就列表"),
+  education: z
+    .object({
+      university: z.string().describe("主要毕业院校"),
+      degree: z.string().describe("学位"),
+      graduation_year: z.number().optional().describe("毕业年份"),
+    })
+    .optional()
+    .describe("教育背景"),
+  biography: z.string().describe("简短传记，100字以内"),
+});
+export const personTool = {
+  name: "extract_scientist_info",
+  description: "提取和结构化人物的详细信息",
+  schema: personSchema,
+}

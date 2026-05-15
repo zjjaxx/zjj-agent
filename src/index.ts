@@ -5,25 +5,20 @@ import { mkdirSync } from "fs";
 import { errorLog, infoLog, gradientBanner, successLog } from "./utils/color";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
-import {
-  execaTool,
-} from "./utils/tool";
+import { execaTool, personTool } from "./utils/tool";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 import {
   invokeToolCalls,
   safelyInvokeModel,
+  type ChatOpenAIBindToolsParams,
   type ModelWithTools,
 } from "./utils/invoke";
 import { RAG } from "./rag/index";
-import { generateDocs } from "./rag/loader";
-import { documents } from "./rag/local";
-import {
-  getTools,
-  getMcpResourceContent,
-  generateMcpClient,
-} from "./mcp/test-client";
+import { getTools, generateMcpClient } from "./mcp/test-client";
 import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
-import { executeTruncationMemory } from "./memory/truncation-memory";
-import { summarizationMemoryDemo } from "./memory/summarization-memory";
+
+/** `bindTools` 的工具联合类型上并非都有 `name`，此处按项目里的 LangChain 工具断言 */
+type BindToolName = Pick<StructuredToolInterface, "name">;
 
 async function main() {
   gradientBanner("欢迎使用 ZJJ AGENT!");
@@ -39,35 +34,41 @@ async function main() {
 
   const mcpClient = generateMcpClient();
   const mcpTools = await getTools();
-  const mcpResourceContent = await getMcpResourceContent();
-  const tools = [execaTool, ...mcpTools];
-  infoLog(`已加载工具:\n ${tools.map((tool) => tool.name).join("\n")}`);
+  const ignoreToolMap = new Map<string, boolean>([[personTool.name, true]]);
+  const tools = [execaTool, personTool, ...mcpTools];
+  infoLog(
+    `已加载工具:\n ${tools.map((tool) => (tool as BindToolName).name).join("\n")}`,
+  );
   const llm = new ChatDeepSeekWithReasoning({
     model: "deepseek-v4-pro",
     temperature: 0.8,
     apiKey: DEEPSEEK_API_KEY,
   });
+  // 1. 绑定工具并挂载解析器
   const modelWithTools = llm.bindTools(tools);
 
   async function runAgentLoop(
     modelWithTools: ModelWithTools,
     messages: BaseMessage[],
   ) {
-    await executeTruncationMemory();
-    await summarizationMemoryDemo(modelWithTools);
-    return;
-    let aiMsg = await safelyInvokeModel(modelWithTools, messages);
-    successLog(`AI: ${aiMsg.content}`);
+    // await executeTruncationMemory();
+    // await summarizationMemoryDemo(modelWithTools);
+    let aiMsg = await safelyInvokeModel(modelWithTools, messages, true);
+    successLog(`AI响应内容: ${aiMsg.content}`);
     messages.push(aiMsg);
-
-    while (aiMsg?.tool_calls && aiMsg.tool_calls.length > 0) {
-      const toolResults = await invokeToolCalls(aiMsg.tool_calls, tools);
+    const toolCalls = aiMsg?.tool_calls?.filter(
+      (toolCall) => !ignoreToolMap.get(toolCall.name),
+    );
+    const _tools = tools.filter((tool) => !ignoreToolMap.get(tool.name));
+    while (toolCalls && toolCalls.length > 0) {
+      const toolResults = await invokeToolCalls(toolCalls, _tools);
       messages.push(...toolResults);
 
       aiMsg = await safelyInvokeModel(modelWithTools, messages);
       successLog(`AI: ${aiMsg.content}`);
       messages.push(aiMsg);
     }
+    return aiMsg;
   }
   const rag = new RAG();
   // const question = '"光光和东东的故事中，他们是怎么成为好朋友的？"';
@@ -77,9 +78,10 @@ async function main() {
   // const ragPrompt2 = await rag.executeRag(question2,webDocs);
   await rag.connnectMilvus();
   await rag.executeMilvus();
-  const milvusQuery = "天龙八部的段誉喜欢乔峰吗";
+
+  const milvusQuery = `提取和结构化段誉的信息`;
   const milvusQueryVector = await rag.embeddings.embedQuery(milvusQuery);
-  const milvusPrompt = await rag.generatePrompt(milvusQueryVector,milvusQuery);
+  const milvusPrompt = await rag.generatePrompt(milvusQueryVector, milvusQuery);
   const messages: BaseMessage[] = [
     new SystemMessage(milvusPrompt),
     // new SystemMessage(ragPrompt),
@@ -113,7 +115,8 @@ async function main() {
     // new HumanMessage(question2),
     new HumanMessage(milvusQuery),
   ];
-  await runAgentLoop(modelWithTools, messages);
+  const aiMsg = await runAgentLoop(modelWithTools, messages);
+  infoLog(`result is:`, aiMsg?.tool_calls?.[0]?.args);
   await mcpClient.close();
 }
 main();
