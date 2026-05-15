@@ -12,7 +12,7 @@ import {
   type ModelWithTools,
 } from "./utils/invoke";
 import { RAG } from "./rag/index";
-import { getTools, generateMcpClient } from "./mcp/test-client";
+import { getTools, generateMcpClient, getMcpResourceContent } from "./mcp/test-client";
 import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
 
 async function main() {
@@ -51,14 +51,17 @@ async function main() {
     let aiMsg = await safelyInvokeModel(modelWithTools, messages, true);
     successLog(`AI响应内容: ${aiMsg.content}`);
     messages.push(aiMsg);
-    const toolCalls = aiMsg?.tool_calls?.filter(
-      (toolCall) => !ignoreToolMap.get(toolCall.name),
-    );
-    const _tools = tools.filter((tool) => !ignoreToolMap.get(tool.name));
-    while (toolCalls && toolCalls.length > 0) {
+   
+    while (true) {
+      const toolCalls = aiMsg?.tool_calls?.filter(
+        (toolCall) => !ignoreToolMap.get(toolCall.name),
+      );
+      if (!toolCalls || toolCalls.length === 0) {
+        break;
+      }
+      const _tools = tools.filter((tool) => !ignoreToolMap.get(tool.name));
       const toolResults = await invokeToolCalls(toolCalls, _tools);
       messages.push(...toolResults);
-
       aiMsg = await safelyInvokeModel(modelWithTools, messages);
       successLog(`AI: ${aiMsg.content}`);
       messages.push(aiMsg);
@@ -71,20 +74,21 @@ async function main() {
   // const question2 = '如何使用cheerio加载网页？';
   // const webDocs = await generateDocs();
   // const ragPrompt2 = await rag.executeRag(question2,webDocs);
-  await rag.connnectMilvus();
-  await rag.executeMilvus();
+  // await rag.connnectMilvus();
+  // await rag.executeMilvus();
 
-  const milvusQuery = `提取和结构化段誉的信息`;
-  const milvusQueryVector = await rag.embeddings.embedQuery(milvusQuery);
-  const milvusPrompt = await rag.generatePrompt(milvusQueryVector, milvusQuery);
+  // const milvusQuery = `提取和结构化段誉的信息`;
+  // const milvusQueryVector = await rag.embeddings.embedQuery(milvusQuery);
+  // const milvusPrompt = await rag.generatePrompt(milvusQueryVector, milvusQuery);
+  const mcpResourceContent = await getMcpResourceContent();
   const messages: BaseMessage[] = [
-    new SystemMessage(milvusPrompt),
+    // new SystemMessage(milvusPrompt),
     // new SystemMessage(ragPrompt),
     // new SystemMessage(ragPrompt2),
-    //     new SystemMessage(`你是一个项目管理助手，使用工具完成任务。
-    // 当前工作目录: ${process.cwd()}
-    // ## 参考文档（用户询问相关内容时直接引用回答，无需调用工具）：
-    // ${mcpResourceContent}`),
+        new SystemMessage(`你是一个项目管理助手，使用工具完成任务。
+    当前工作目录: ${process.cwd()}
+    ## 参考文档（用户询问相关内容时直接引用回答，无需调用工具）：
+    ${mcpResourceContent}`),
     //     new HumanMessage(`在当前目录下创建一个功能丰富的 React TodoList 应用：
     // 1. 创建项目：基于Tanstack cli 脚手架创建一个TodoListspa单页面应用,使用pnpm作为包管理器,使用react作为前端框架,使用vite作为打包框架，用tanstack 的 form 、table、router、query,UI框架用tailwindcss,规范采用eslint、提交采用husky、git规范采用commitlint
     // 2. 完整功能的 TodoList：
@@ -104,15 +108,14 @@ async function main() {
     // 之后在 项目中：
     // 1. 使用 pnpm install 安装依赖
     // `),
-    // new HumanMessage(`查询用户信息，用户ID为001,查询MCP Server 的使用指南,当前在杭州市余杭区欧美经融城，搜索离我最近的商场，查看当前目录`),
+    new HumanMessage(`查询用户信息，用户ID为001,查询MCP Server 的使用指南,当前在杭州市余杭区欧美经融城，搜索离我最近的商场，查看当前目录`),
     // new HumanMessage(`杭州市余杭区欧美金融城附近的5个酒店，以及去的路线，路线规划生成文档保存到/Users/zhengjiajun/Desktop/路线规划.md 文件`),
     // new HumanMessage(question),
     // new HumanMessage(question2),
-    new HumanMessage(milvusQuery),
+    // new HumanMessage(milvusQuery),
   ];
   const aiMsg = await runAgentLoop(modelWithTools, messages);
-  const result = aiMsg.tool_calls?.[0]?.args as PersonInfo;
-  infoLog(`result is:`,'\n','name:', result.name,'\n','birth_year:', result.birth_year,'\n','death_year:', result.death_year,'\n','nationality:', result.nationality,'\n','awards:', result.awards,'\n','major_achievements:', result.major_achievements,'\n','education:', result.education,'\n','biography:', result.biography);
+  infoLog(`AI响应内容: ${aiMsg.content}`);
   await mcpClient.close();
 }
 main();

@@ -10,7 +10,7 @@ export async function withSpinner<T>(text: string, task: (spinner: Ora) => Promi
   try {
     return await task(spinner);
   } catch (error) {
-    spinner.fail(`${text}失败`);
+    spinner.fail(`请求模型失败`);
     throw error;
   } finally {
     if (spinner.isSpinning) {
