@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { mkdirSync } from "fs";
 import { errorLog, infoLog, gradientBanner, successLog } from "./utils/color";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage,ToolCall } from "@langchain/core/messages";
 import { execaTool, personTool, type PersonInfo } from "./utils/tool";
 import {
   invokeToolCalls,
@@ -48,7 +48,7 @@ async function main() {
   ) {
     // await executeTruncationMemory();
     // await summarizationMemoryDemo(modelWithTools);
-    let aiMsg = await safelyInvokeModel(modelWithTools, messages, true);
+    let aiMsg = await safelyInvokeModel(modelWithTools, messages, true,tools as unknown as ToolCall[]);
     successLog(`AI响应内容: ${aiMsg.content}`);
     messages.push(aiMsg);
    

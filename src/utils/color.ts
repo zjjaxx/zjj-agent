@@ -24,10 +24,14 @@ export const warnLog = (message: string) => {
 
 export const infoLog = (...messages: unknown[]) => {
   const text = messages.map(formatLogMessage).join(" ");
-  console.info(picocolors.blue(`[INFO] ${text}`))
+  console.log(picocolors.blue(`[INFO] ${text}`))
+}
+export const infoLogStream = (...messages: unknown[]) => {
+  const text = messages.map(formatLogMessage).join(" ");
+  process.stdout.write(picocolors.blue(text))
 }
 export const successLog = (message: string) => {
-  console.info(picocolors.green(`[SUCCESS] ${message}`))
+  console.log(picocolors.green(`[SUCCESS] ${message}`))
 }
 
 function getDisplayWidth(str: string) {

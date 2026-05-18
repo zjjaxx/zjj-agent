@@ -7,11 +7,9 @@ import {
 } from "@langchain/core/messages";
 import type { BaseLanguageModelInput } from "@langchain/core/language_models/base";
 import type { Runnable } from "@langchain/core/runnables";
-
 import type { StructuredToolInterface } from "@langchain/core/tools";
-
 import { withSpinner } from "./progress";
-import { errorLog, infoLog } from "./color";
+import { errorLog, infoLog, infoLogStream } from "./color";
 import type {
   BaseChatOpenAI,
   BaseChatOpenAICallOptions,
@@ -69,10 +67,11 @@ export async function safelyInvokeModel(
   modelWithTools: ModelWithTools,
   messages: BaseMessage[],
   stream: boolean = false,
+  tools?: ToolCall[],
 ) {
   try {
     if (stream) {
-      return await streamInvokeModel(modelWithTools, messages);
+      return await streamInvokeModel(modelWithTools, messages, tools ?? []);
     } else {
       return await invokeModel(modelWithTools, messages);
     }
@@ -90,17 +89,33 @@ export async function safelyInvokeModel(
 export async function streamInvokeModel(
   modelWithTools: ModelWithTools,
   messages: BaseMessage[],
+  tools: ToolCall[],
 ): Promise<AIMessage> {
+  const toolsByName = new Map<string, ToolCall>();
+  for (const t of tools) {
+    toolsByName.set(t.name, t);
+  }
   return await withSpinner("🚀请求模型中...", async (spinner) => {
     const stream = await modelWithTools.stream(messages);
     spinner.stop();
     let acc: AIMessageChunk | undefined;
     for await (const chunk of stream) {
       acc = acc ? acc.concat(chunk) : chunk;
-      if (chunk.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
-        process.stdout.write(chunk.tool_call_chunks[0].args as string);
+      const reasoningContent = chunk.additional_kwargs.reasoning_content;
+      if (typeof reasoningContent === "string" && reasoningContent) {
+        infoLogStream(reasoningContent);
       }
+      // 当前还没有解析出工具调用时，如果有文本内容就直接输出
+      if (chunk.content) {
+        infoLogStream( 
+          typeof chunk.content === "string"
+            ? chunk.content
+            : JSON.stringify(chunk.content),
+        );
+      }
+
     }
+
     if (!acc) {
       return new AIMessage("");
     }
