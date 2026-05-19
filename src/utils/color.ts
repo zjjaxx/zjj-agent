@@ -28,7 +28,7 @@ export const infoLog = (...messages: unknown[]) => {
 }
 export const infoLogStream = (...messages: unknown[]) => {
   const text = messages.map(formatLogMessage).join(" ");
-  process.stdout.write(picocolors.blue(text))
+  process.stdout.write(picocolors.blueBright(text))
 }
 export const successLog = (message: string) => {
   console.log(picocolors.green(`[SUCCESS] ${message}`))

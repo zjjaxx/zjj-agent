@@ -67,11 +67,10 @@ export async function safelyInvokeModel(
   modelWithTools: ModelWithTools,
   messages: BaseMessage[],
   stream: boolean = false,
-  tools?: ToolCall[],
 ) {
   try {
     if (stream) {
-      return await streamInvokeModel(modelWithTools, messages, tools ?? []);
+      return await streamInvokeModel(modelWithTools, messages);
     } else {
       return await invokeModel(modelWithTools, messages);
     }
@@ -89,12 +88,7 @@ export async function safelyInvokeModel(
 export async function streamInvokeModel(
   modelWithTools: ModelWithTools,
   messages: BaseMessage[],
-  tools: ToolCall[],
 ): Promise<AIMessage> {
-  const toolsByName = new Map<string, ToolCall>();
-  for (const t of tools) {
-    toolsByName.set(t.name, t);
-  }
   return await withSpinner("🚀请求模型中...", async (spinner) => {
     const stream = await modelWithTools.stream(messages);
     spinner.stop();
