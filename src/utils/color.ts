@@ -30,8 +30,8 @@ export const infoLogStream = (...messages: unknown[]) => {
   const text = messages.map(formatLogMessage).join(" ");
   process.stdout.write(picocolors.blueBright(text))
 }
-export const successLog = (message: string) => {
-  console.log(picocolors.green(`[SUCCESS] ${message}`))
+export const successLog = (...messages: unknown[]) => {
+  console.log(picocolors.green(`[SUCCESS] ${messages.map(formatLogMessage).join(" ")}`))
 }
 
 function getDisplayWidth(str: string) {

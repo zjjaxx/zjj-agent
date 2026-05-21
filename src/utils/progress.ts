@@ -18,4 +18,18 @@ export async function withSpinner<T>(text: string, task: (spinner: Ora) => Promi
     }
   }
 }
+export function createProgress(text: string) {
+  const spinner = ora({ text, discardStdin: false }).start();
+  return {
+    stop: () => spinner.stop(),
+    fail: (text: string) => spinner.fail(text),
+    succeed: (text?: string) => spinner.succeed(text),
+    get isSpinning() {
+      return spinner.isSpinning;
+    },
+  };
+}
+
+
+
 
