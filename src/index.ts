@@ -8,10 +8,7 @@ import { execaTool, personTool } from "./utils/tool";
 import { RAG } from "./rag/index";
 import { getTools, generateMcpClient } from "./mcp/test-client";
 import { ChatDeepSeekWithReasoning } from "./chat-deepseek-with-reasoning";
-import {
-  ChatPromptTemplate,
-  MessagesPlaceholder,
-} from "@langchain/core/prompts";
+import {runnablePrompt} from "./prompt";
 import { genereateAgentStepChain,type State } from "./runnable";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { createProgress } from "./utils/progress";
@@ -45,27 +42,36 @@ async function main() {
     let state: State={
       messages: [new HumanMessage(query)],
       done: false,
-      tools: tools as DynamicStructuredTool[]
+      tools: tools as DynamicStructuredTool[],
+      question: query,
+      k: 5,
+      rag,
     };
     const agentStepChain = genereateAgentStepChain(llmChain);
     while (true) {
-      const progress = createProgress(`🔍 执行第 ${state.messages.length} 轮`);
-      const result = await agentStepChain.invoke(state);
-      progress.succeed(`执行第 ${state.messages.length} 轮完成`);
-      if(result.done) {
-        return result;
+      const progress = createProgress(`🚀请求模型中...`);
+      const stream = await agentStepChain.stream(state);
+      let acc: any
+      for await (const chunk of stream) {
+        acc = acc ? acc.concat(chunk) : chunk;
+        process.stdout.write(typeof chunk.response?.content === "string" ? chunk.response?.content : JSON.stringify(chunk.response?.content));
       }
-      state = result;
+      progress.succeed(`模型请求完成`);
+      state=acc;
+      if(state.done) {
+        return state;
+      }
     }
   }
   const rag = new RAG();
-  const prompt = ChatPromptTemplate.fromMessages([
-    ["system", "你是一个可以调用 MCP 工具的智能助手。"],
-    new MessagesPlaceholder("messages"),
-  ]);
-  const llmChain = prompt.pipe(modelWithTools);
-  const aiMsg = await runAgentLoop("杭州市余杭区欧美金融城附近的5个酒店，以及去的路线，路线规划生成文档保存到/Users/zhengjiajun/Desktop/路线规划.md 文件");
-  successLog(`AI响应内容: ${aiMsg}`);
+  await rag.connnectMilvus()
+  await rag.initMilvus()
+  const llmChain = runnablePrompt.pipe(modelWithTools);
+  const questions =[ "段誉喜欢乔峰吗？","杭州市余杭区欧美金融城附近的5个酒店，以及去的路线，路线规划生成文档保存到/Users/zhengjiajun/Desktop/路线规划.md 文件"];
+  for await (const question of questions) {
+    const aiMsg = await runAgentLoop(question);
+    successLog(`AI响应内容`,aiMsg.response?.content);
+  }
   await mcpClient.close();
 }
 main();

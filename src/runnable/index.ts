@@ -9,6 +9,7 @@ import { ToolMessage, AIMessage } from "@langchain/core/messages";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { errorLog, infoLog, successLog } from "../utils/color";
 import type { BaseMessage } from "@langchain/core/messages";
+import { milvusQuery, type MilvusState } from "./milvus";
 
 export type State={
   response?: AIMessage;
@@ -16,7 +17,7 @@ export type State={
   tools: DynamicStructuredTool[];
   toolMessages?: ToolMessage[];
   done: boolean;
-}
+} & MilvusState;
 const toolExecutor = new RunnableLambda({
   func: async (input: {
     response: AIMessage;
@@ -40,7 +41,7 @@ const toolExecutor = new RunnableLambda({
         );
         try {
           const toolResult = await foundTool.invoke(toolCall);
-          successLog(`工具: ${toolCall.name} 执行成功, 结果:`,toolResult);
+          successLog(`工具: ${toolCall.name} 执行成功`);
           return toolResult;
         } catch (error) {
           const msg = `执行工具: ${toolCall.name},参数: ${JSON.stringify(toolCall.args)}失败: ${error instanceof Error ? error.message : String(error)}`;
@@ -56,7 +57,9 @@ const toolExecutor = new RunnableLambda({
 });
 // 2. 对结果的处理
 const genereateAgentStepChain = (llmChain:Runnable) => RunnableSequence.from([
+  milvusQuery,
   // step1: 将 LLM 输出挂到 state.response 上
+  // 这里不用手动 invoke，在 chain invoke 的时候，会自动执行所有的 Runnable
   RunnablePassthrough.assign({
     response: llmChain,
   }), // step2: 使用 RunnableBranch 根据是否有 tool_calls 走不同分支
@@ -68,8 +71,11 @@ const genereateAgentStepChain = (llmChain:Runnable) => RunnableSequence.from([
       new RunnableLambda({
         func: async (state: State) => {
           const { messages, response } = state;
-          const newMessages = [...messages, response ?? new AIMessage({content: ""})];
-          infoLog(`🔍 任务完成，返回结果: ${response?.content ?? ""}`);
+          if(!response) {
+            throw new Error("模型返回结果为空");
+          }
+          const newMessages = [...messages, response];
+          infoLog(`本轮任务完成`);
           return {
             ...state,
             messages: newMessages,

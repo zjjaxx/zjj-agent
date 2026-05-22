@@ -3,6 +3,7 @@ import { Document } from "@langchain/core/documents";
 import { withSpinner } from "../utils/progress";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { infoLog, successLog, errorLog } from "../utils/color";
+import { createProgress } from "../utils/progress";
 import {
   MilvusClient,
   DataType,
@@ -14,7 +15,7 @@ import {
   loadAndProcessEPubStreaming,
   BOOK_NAME,
 } from "./novel";
-const VECTOR_DIM = 1024;
+
 type MilvusQueryRow = {
   id?: string | number;
 };
@@ -27,6 +28,7 @@ type MilvusQueryResult = {
 export class RAG {
   public embeddings: OpenAIEmbeddings;
   public client: MilvusClient;
+  public VECTOR_DIM = 1024;
   constructor() {
     this.embeddings = new OpenAIEmbeddings({
       apiKey: process.env.EMBEDDINGS_MODEL_KEY,
@@ -35,18 +37,16 @@ export class RAG {
       configuration: {
         baseURL: process.env.EMBEDDINGS_MODEL_BASE_URL,
       },
-      dimensions: VECTOR_DIM,
+      dimensions: this.VECTOR_DIM,
     });
     this.client = new MilvusClient({
       address: process.env.MILVUS_ADDRESS ?? "localhost:19530",
     });
   }
   async generateVectorStore(webDocs: Document[]) {
-    const vectorStore = withSpinner(
-      "🚀生成向量存储中...",
-      async () =>
-        await MemoryVectorStore.fromDocuments(webDocs, this.embeddings),
-    );
+    const progress=createProgress("🚀生成向量存储中...");
+    const vectorStore = await MemoryVectorStore.fromDocuments(webDocs, this.embeddings);
+    progress.succeed("向量存储生成完成");
     return vectorStore;
   }
   async executeRag(question: string, webDocs: Document[]) {
@@ -79,7 +79,7 @@ ${context}`;
     const rows = queryResult.data ?? queryResult.results ?? [];
     return rows.length > 0;
   }
-  async executeMilvus() {
+  async initMilvus() {
     // 检查集合是否存在
     const hasCollection = await this.client.hasCollection({
       collection_name: COLLECTION_NAME,
@@ -100,7 +100,7 @@ ${context}`;
           { name: "chapter_num", data_type: DataType.Int32 },
           { name: "index", data_type: DataType.Int32 },
           { name: "content", data_type: DataType.VarChar, max_length: 10000 },
-          { name: "vector", data_type: DataType.FloatVector, dim: VECTOR_DIM },
+          { name: "vector", data_type: DataType.FloatVector, dim: this.VECTOR_DIM },
         ],
       });
       successLog("集合创建成功");

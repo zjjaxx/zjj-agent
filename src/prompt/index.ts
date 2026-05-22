@@ -139,3 +139,23 @@ export const chatPromptWithHistory = ChatPromptTemplate.fromMessages([
     请结合上面的历史对话，一并给出你的建议。`,
   ],
 ]);
+
+
+export const runnablePrompt = ChatPromptTemplate.fromMessages([
+  ["system",  `你是一个可以调用 MCP 工具的智能助手。基于小说内容回答问题，用准确、详细的语言。
+    
+    请根据以下《天龙八部》小说片段内容回答问题：
+    {milvusResults}
+    
+    用户问题: {question}
+    
+    回答要求：
+    1. 如果片段中有相关信息，请结合小说内容给出详细、准确的回答
+    2. 可以综合多个片段的内容，提供完整的答案
+    3. 如果片段中没有相关信息，请如实告知用户
+    4. 回答要准确，符合小说的情节和人物设定
+    5. 可以引用原文内容来支持你的回答
+    
+    AI 助手的回答:`],
+  new MessagesPlaceholder("messages"),
+]);
