@@ -1,5 +1,5 @@
 import {
-  type Runnable,
+  Runnable,
   RunnableLambda,
   RunnableSequence,
   RunnableBranch,
@@ -10,8 +10,9 @@ import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { errorLog, infoLog, successLog } from "../utils/color";
 import type { BaseMessage } from "@langchain/core/messages";
 import { milvusQuery, type MilvusState } from "./milvus";
+import { StringOutputParser } from "@langchain/core/output_parsers";
 
-export type State={
+export type State = {
   response?: AIMessage;
   messages: BaseMessage[];
   tools: DynamicStructuredTool[];
@@ -56,65 +57,66 @@ const toolExecutor = new RunnableLambda({
   },
 });
 // 2. 对结果的处理
-const genereateAgentStepChain = (llmChain:Runnable) => RunnableSequence.from([
-  milvusQuery,
-  // step1: 将 LLM 输出挂到 state.response 上
-  // 这里不用手动 invoke，在 chain invoke 的时候，会自动执行所有的 Runnable
-  RunnablePassthrough.assign({
-    response: llmChain,
-  }), // step2: 使用 RunnableBranch 根据是否有 tool_calls 走不同分支
-  RunnableBranch.from([
-    // 分支1：没有 tool_calls，认为本轮已经完成
-    [
-      (state: State) =>
-        !state.response?.tool_calls || state.response.tool_calls.length === 0,
-      new RunnableLambda({
-        func: async (state: State) => {
-          const { messages, response } = state;
-          if(!response) {
-            throw new Error("模型返回结果为空");
-          }
-          const newMessages = [...messages, response];
-          infoLog(`本轮任务完成`);
-          return {
-            ...state,
-            messages: newMessages,
-            done: true,
-          };
-        },
-      }),
-    ], // 默认分支：有 tool_calls，调用工具并把 ToolMessage 写回 messages
-    RunnableSequence.from([
-      new RunnableLambda({
-        func: async (state: State) => {
-          const { messages, response } = state;
-          const newMessages = [...messages, response];
+const genereateAgentStepChain = (llmChain: Runnable) =>
+  RunnableSequence.from([
+    milvusQuery,
+    // step1: 将 LLM 输出挂到 state.response 上
+    // 这里不用手动 invoke，在 chain invoke 的时候，会自动执行所有的 Runnable
+    RunnablePassthrough.assign({
+      response: llmChain,
+    }),
+    RunnableBranch.from([
+      // 分支1：没有 tool_calls，认为本轮已经完成
+      [
+        (state: State) =>
+          !state.response?.tool_calls || state.response.tool_calls.length === 0,
+        new RunnableLambda({
+          func: async (state: State) => {
+            const { messages, response } = state;
+            if (!response) {
+              throw new Error("模型返回结果为空");
+            }
+            const newMessages = [...messages, response];
+            infoLog(`本轮任务完成`);
+            return {
+              ...state,
+              messages: newMessages,
+              done: true,
+            };
+          },
+        }),
+      ], // 默认分支：有 tool_calls，调用工具并把 ToolMessage 写回 messages
+      RunnableSequence.from([
+        new RunnableLambda({
+          func: async (state: State) => {
+            const { messages, response } = state;
+            const newMessages = [...messages, response];
 
-          infoLog(
-            `🔍 检测到 ${response?.tool_calls?.length ?? 0} 个工具调用`,
-          );
+            infoLog(
+              `🔍 检测到 ${response?.tool_calls?.length ?? 0} 个工具调用`,
+            );
 
-          return {
-            ...state,
-            messages: newMessages,
-          };
-        },
-      }), // 调用工具执行器，得到 toolMessages
-      RunnablePassthrough.assign({
-        toolMessages: toolExecutor,
-      }),
-      new RunnableLambda({
-        func: async (state: State) => {
-          const { messages, toolMessages } = state;
-          return {
-            ...state,
-            messages: [...messages, ...(toolMessages ?? [])],
-            done: false,
-          };
-        },
-      }),
+            return {
+              ...state,
+              messages: newMessages,
+            };
+          },
+        }), // 调用工具执行器，得到 toolMessages
+        RunnablePassthrough.assign({
+          toolMessages: toolExecutor,
+        }),
+        new RunnableLambda({
+          func: async (state: State) => {
+            const { messages, toolMessages } = state;
+            return {
+              ...state,
+              messages: [...messages, ...(toolMessages ?? [])],
+              done: false,
+            };
+          },
+        }),
+      ]),
     ]),
-  ]),
-]);
+  ]);
 
 export { toolExecutor, genereateAgentStepChain };
